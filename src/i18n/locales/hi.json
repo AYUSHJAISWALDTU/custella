@@ -1,0 +1,57 @@
+{
+  "app": {
+    "name": "Custella",
+    "tagline": "हर ग्राहक याद रखें।"
+  },
+  "common": {
+    "save": "सेव करें",
+    "cancel": "रद्द करें",
+    "delete": "हटाएँ",
+    "edit": "बदलें",
+    "done": "हो गया",
+    "back": "वापस",
+    "retry": "फिर कोशिश करें",
+    "search": "खोजें",
+    "add": "जोड़ें",
+    "addNew": "＋ नया जोड़ें",
+    "comingSoon": "जल्द आ रहा है"
+  },
+  "greeting": {
+    "morning": "सुप्रभात, {{name}} 👋",
+    "afternoon": "नमस्ते, {{name}} 👋",
+    "evening": "शुभ संध्या, {{name}} 👋"
+  },
+  "nav": {
+    "add": "जोड़ें",
+    "customers": "ग्राहक",
+    "stats": "आँकड़े"
+  },
+  "home": {
+    "addCustomer": "＋ ग्राहक जोड़ें",
+    "searchCustomer": "ग्राहक खोजें 🔍",
+    "today": "आज",
+    "customersAddedToday_one": "{{count}} ग्राहक जोड़ा गया",
+    "customersAddedToday_other": "{{count}} ग्राहक जोड़े गए"
+  },
+  "customers": {
+    "title": "ग्राहक",
+    "empty": {
+      "title": "अभी कोई ग्राहक नहीं",
+      "body": "अपना पहला ग्राहक जोड़ें, वे हमेशा यहाँ रहेंगे।"
+    }
+  },
+  "stats": {
+    "title": "आँकड़े",
+    "empty": {
+      "title": "अभी दिखाने को कुछ नहीं",
+      "body": "ग्राहक जोड़ते ही आपके आँकड़े यहाँ दिखेंगे।"
+    }
+  },
+  "sync": {
+    "offline": "ऑफ़लाइन",
+    "syncing": "सिंक हो रहा है…",
+    "synced_one": "{{count}} ग्राहक सिंक हुआ",
+    "synced_other": "{{count}} ग्राहक सिंक हुए",
+    "allSynced": "सब सिंक हो गया"
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "app": {
+    "name": "Custella",
+    "tagline": "Remember Every Customer."
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "done": "Done",
+    "back": "Back",
+    "retry": "Retry",
+    "search": "Search",
+    "add": "Add",
+    "addNew": "＋ Add new",
+    "comingSoon": "Coming soon"
+  },
+  "greeting": {
+    "morning": "Good Morning, {{name}} 👋",
+    "afternoon": "Good Afternoon, {{name}} 👋",
+    "evening": "Good Evening, {{name}} 👋"
+  },
+  "nav": {
+    "add": "Add",
+    "customers": "Customers",
+    "stats": "Stats"
+  },
+  "home": {
+    "addCustomer": "＋ ADD CUSTOMER",
+    "searchCustomer": "Search Customer 🔍",
+    "today": "Today",
+    "customersAddedToday_one": "{{count}} Customer Added",
+    "customersAddedToday_other": "{{count}} Customers Added"
+  },
+  "customers": {
+    "title": "Customers",
+    "empty": {
+      "title": "No customers yet",
+      "body": "Add your first customer and they'll be here forever."
+    }
+  },
+  "stats": {
+    "title": "Stats",
+    "empty": {
+      "title": "Nothing to show yet",
+      "body": "Your totals appear here once you've added a customer."
+    }
+  },
+  "sync": {
+    "offline": "Offline",
+    "syncing": "Syncing…",
+    "synced_one": "{{count}} customer synced",
+    "synced_other": "{{count}} customers synced",
+    "allSynced": "All synced"
+  }
+}
