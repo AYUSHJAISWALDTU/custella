@@ -1,0 +1,909 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Custella — remember every customer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+
+<style>
+:root{
+  --ink:#12142B; --ink-2:#20244A;
+  --paper:#F2F4F8; --card:#FFFFFF;
+  --stamp:#5A3FC0; --stamp-deep:#402C96; --stamp-tint:#EEE9FC;
+  --tally:#12775A; --tally-tint:#E3F1EC;
+  --flag:#B4530A; --flag-tint:#FBEEE0;
+  --line:#DDE2EC; --line-soft:#EAEDF4;
+  --muted:#6B7288;
+  --sh-1:0 1px 2px rgba(18,20,43,.05);
+  --sh-2:0 2px 4px rgba(18,20,43,.04), 0 12px 28px -14px rgba(18,20,43,.22);
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --nav-h:64px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+:focus-visible{outline:2.5px solid var(--stamp);outline-offset:2px;border-radius:8px}
+a{color:var(--stamp);text-decoration:none}
+a:hover{text-decoration:underline}
+h1,h2,h3{margin:0;letter-spacing:-.022em;line-height:1.16}
+h1{font-size:28px;font-weight:800}
+h2{font-size:19px;font-weight:750}
+h3{font-size:15px;font-weight:700}
+p{margin:0}
+svg{flex:none}
+
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);margin:0 0 7px}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.note{font-size:13.5px;color:var(--muted)}
+.stack{display:grid;gap:18px}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.spacer{margin-right:auto}
+
+/* ============ shell ============ */
+.shell{display:grid;grid-template-columns:244px 1fr;min-height:100%}
+.side{background:var(--ink);color:#fff;padding:20px 14px;display:flex;flex-direction:column;gap:22px;position:sticky;top:0;height:100vh}
+.brand{display:flex;align-items:center;gap:10px;padding:0 8px}
+.brand__mark{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.08em;background:var(--stamp);padding:5px 7px;border-radius:6px;transform:rotate(-4deg)}
+.brand__name{font-size:16px;font-weight:800;letter-spacing:.01em}
+.side__shop{padding:0 8px}
+.side__shop b{display:block;font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.side__shop span{font-size:12px;color:#9AA1BC}
+.side nav{display:grid;gap:2px}
+.side nav button{display:flex;align-items:center;gap:11px;width:100%;background:none;border:0;color:#B7BDD4;font:inherit;font-size:14px;font-weight:600;padding:10px;border-radius:9px;cursor:pointer;text-align:left}
+.side nav button:hover{background:rgba(255,255,255,.07);color:#fff}
+.side nav button[aria-current="page"]{background:#fff;color:var(--ink)}
+.side__foot{margin-top:auto;display:grid;gap:10px;padding:0 4px}
+.chip{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:6px 10px;border-radius:999px}
+.chip--live{background:rgba(18,119,90,.22);color:#7BE0BC}
+.chip--demo{background:rgba(180,83,10,.2);color:#F0B27A}
+.side__foot .btn{width:100%}
+
+.main{min-width:0;padding:26px 30px 90px}
+.mtop{display:none}
+
+@media(max-width:900px){
+  .shell{grid-template-columns:1fr}
+  .side{display:none}
+  .mtop{display:flex;align-items:center;gap:12px;background:var(--ink);color:#fff;padding:12px 16px;position:sticky;top:0;z-index:20;margin:-18px -16px 18px}
+  .main{padding:18px 16px calc(var(--nav-h) + 34px)}
+  .tabs{position:fixed;left:0;right:0;bottom:0;height:calc(var(--nav-h) + env(safe-area-inset-bottom));
+    background:#fff;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);z-index:30;
+    padding-bottom:env(safe-area-inset-bottom)}
+  .tabs button{background:none;border:0;font:inherit;font-size:11px;font-weight:700;color:var(--muted);
+    display:grid;justify-items:center;gap:3px;cursor:pointer;padding-top:9px}
+  .tabs button[aria-current="page"]{color:var(--stamp)}
+  h1{font-size:24px}
+}
+@media(min-width:901px){ .tabs{display:none} }
+
+/* ============ pieces ============ */
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--sh-1)}
+.card__pad{padding:20px}
+.card__head{padding:16px 20px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.card__head h2{margin-right:auto}
+
+.hero{background:var(--ink);color:#fff;border-radius:18px;padding:26px;display:grid;grid-template-columns:1fr auto;gap:22px;align-items:end;box-shadow:var(--sh-2)}
+.hero__n{font-family:var(--mono);font-size:64px;font-weight:700;line-height:.95;letter-spacing:-.04em}
+.hero__l{color:#9AA1BC;font-size:14px;margin-top:8px}
+.hero__side{display:flex;gap:26px}
+.hero__side div span{display:block;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#868DAB;margin-top:4px}
+.hero__side div b{font-family:var(--mono);font-size:24px;font-weight:700}
+@media(max-width:560px){.hero{grid-template-columns:1fr;padding:22px}.hero__n{font-size:52px}}
+
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:700px){.grid-2{grid-template-columns:1fr}}
+
+.btn{font:inherit;font-weight:700;font-size:14.5px;border:1px solid transparent;border-radius:11px;padding:12px 18px;cursor:pointer;background:var(--stamp);color:#fff;min-height:46px;display:inline-flex;align-items:center;justify-content:center;gap:9px;transition:background .15s,transform .06s}
+.btn:hover{background:var(--stamp-deep)}
+.btn:active{transform:translateY(1px)}
+.btn--ghost{background:#fff;color:var(--ink);border-color:var(--line);box-shadow:var(--sh-1)}
+.btn--ghost:hover{background:#F7F8FC}
+.btn--dark{background:var(--ink)}.btn--dark:hover{background:var(--ink-2)}
+.btn--quiet{background:transparent;color:#B7BDD4;border-color:rgba(255,255,255,.16)}
+.btn--quiet:hover{background:rgba(255,255,255,.08);color:#fff}
+.btn--big{width:100%;font-size:17px;padding:19px;min-height:62px}
+.btn--sm{padding:8px 13px;min-height:38px;font-size:13px;border-radius:9px}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+
+.field{display:grid;gap:7px;margin-bottom:15px}
+.field label{font-size:11.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.field input,.field textarea{font:inherit;padding:13px 14px;border:1px solid var(--line);border-radius:11px;background:#fff;color:var(--ink);width:100%;min-height:48px;transition:border-color .15s}
+.field input:focus{border-color:var(--stamp)}
+.field input.phone{font-family:var(--mono);font-size:18px;letter-spacing:.1em}
+.hint{font-size:13px;min-height:19px;margin-bottom:6px}
+.hint--ok{color:var(--tally);font-weight:600}
+.hint--known{color:var(--stamp);font-weight:600}
+.hint--bad{color:#B3261E;font-weight:600}
+
+.list{list-style:none;margin:0;padding:0}
+.list li{padding:14px 20px;border-bottom:1px solid var(--line-soft);display:flex;gap:14px;align-items:center}
+.list li:last-child{border-bottom:0}
+.list__m{margin-right:auto;min-width:0}
+.list__n{font-weight:700}
+.list__p{font-family:var(--mono);font-size:13.5px;letter-spacing:.05em;color:var(--ink-2)}
+.list__s{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.avatar{width:38px;height:38px;border-radius:11px;background:var(--stamp-tint);color:var(--stamp-deep);display:grid;place-items:center;font-weight:800;font-size:14px}
+
+.tag{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:5px 9px;border-radius:999px;background:var(--stamp-tint);color:var(--stamp-deep)}
+.tag--ok{background:var(--tally-tint);color:var(--tally)}
+.tag--flag{background:var(--flag-tint);color:var(--flag)}
+
+.empty{padding:44px 22px;text-align:center}
+.empty h3{margin-bottom:6px}
+.empty .note{max-width:44ch;margin:0 auto 16px}
+
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:12px 20px;border-bottom:1px solid var(--line-soft)}
+tr:last-child td{border-bottom:0}
+th{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700}
+
+.search{width:100%;font:inherit;padding:13px 14px 13px 40px;border:1px solid var(--line);border-radius:11px;min-height:48px;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%236B7288' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-3.2-3.2'/%3E%3C/svg%3E") no-repeat 13px 50%}
+
+/* ============ scan card ============ */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(248px,1fr));gap:16px}
+.qc{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:var(--sh-1)}
+.qc__top{background:var(--ink);color:#fff;padding:14px 16px}
+.qc__top .eyebrow{color:#868DAB;margin:0 0 3px}
+.qc__n{font-size:16px;font-weight:750;line-height:1.25}
+.qc__w{font-size:12.5px;color:#9AA1BC;margin-top:2px}
+.qc__perf{height:0;border-top:2px dashed var(--line);position:relative}
+.qc__perf::before,.qc__perf::after{content:"";position:absolute;top:-9px;width:18px;height:18px;border-radius:50%;background:var(--paper);border:1px solid var(--line)}
+.qc__perf::before{left:-10px}.qc__perf::after{right:-10px}
+.qc__b{padding:20px 16px 16px;text-align:center}
+.qc__qr{display:inline-flex;align-items:center;justify-content:center;padding:10px;border:1px solid var(--line);border-radius:12px;min-height:150px;min-width:150px}
+.qc__ask{font-size:13px;color:var(--muted);margin-top:12px}
+.qc__code{font-family:var(--mono);font-size:11.5px;letter-spacing:.16em;color:var(--muted);margin-top:3px}
+.qc__acts{display:flex;gap:8px;padding:0 16px 16px}
+.qc__acts .btn{flex:1}
+
+/* ============ auth ============ */
+.auth{display:grid;grid-template-columns:1.05fr 1fr;min-height:100vh}
+.auth__pitch{background:var(--ink);color:#fff;padding:52px 46px;display:flex;flex-direction:column;gap:26px}
+.auth__pitch h1{font-size:40px;letter-spacing:-.03em;max-width:14ch}
+.auth__pitch .lede{color:#A7AEC8;font-size:16.5px;max-width:42ch}
+.pitchlist{display:grid;gap:16px;margin-top:auto}
+.pitchlist div{display:flex;gap:12px;align-items:flex-start;color:#CBD0E2;font-size:14.5px}
+.pitchlist b{color:#fff;display:block;font-size:14.5px}
+.auth__form{display:flex;align-items:center;justify-content:center;padding:40px 24px}
+.auth__inner{width:100%;max-width:400px}
+@media(max-width:860px){.auth{grid-template-columns:1fr}.auth__pitch{padding:34px 24px;gap:18px}.auth__pitch h1{font-size:30px}.pitchlist{display:none}}
+
+/* ============ customer world ============ */
+.cust{min-height:100vh;background:var(--ink);padding:26px 16px 44px;display:flex;justify-content:center}
+.cust__in{width:100%;max-width:430px}
+.cust__shop{color:#fff;text-align:center;margin-bottom:18px}
+.cust__shop .eyebrow{color:#868DAB}
+.panel{background:#fff;border-radius:20px;padding:24px;box-shadow:var(--sh-2)}
+.cust__item{border:1.5px dashed var(--line);border-radius:13px;padding:13px 15px;margin-bottom:20px;background:#FAFAFE}
+.privacy{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--muted);margin-top:18px;padding-top:15px;border-top:1px solid var(--line-soft)}
+.slip{background:#fff;border-radius:20px;padding:30px 24px;text-align:center;box-shadow:var(--sh-2);animation:print .55s cubic-bezier(.2,.9,.3,1.05) both}
+@keyframes print{from{transform:translateY(-26px);opacity:0}to{transform:none;opacity:1}}
+@media(prefers-reduced-motion:reduce){.slip{animation:none}}
+.slip__t{width:56px;height:56px;border-radius:50%;background:var(--tally-tint);color:var(--tally);display:grid;place-items:center;margin:0 auto 16px}
+.slip__r{border:0;border-top:2px dashed var(--line);margin:20px 0}
+.slip__no{font-family:var(--mono);font-size:12px;letter-spacing:.18em;color:var(--muted);margin-top:16px}
+
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:13px 20px;border-radius:999px;font-size:14px;font-weight:600;box-shadow:0 10px 30px rgba(18,20,43,.3);z-index:60}
+@media(max-width:900px){.toast{bottom:calc(var(--nav-h) + 20px)}}
+
+.load{display:grid;place-items:center;min-height:100vh;color:var(--muted);font-size:14px}
+
+@media print{
+  .side,.tabs,.mtop,.btn,.qc__acts,.note{display:none !important}
+  body,.main{background:#fff;padding:0}
+  .cards{grid-template-columns:repeat(2,1fr);gap:24px}
+  .qc{box-shadow:none;break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<div id="app"><div class="load">Loading Custella…</div></div>
+<div id="toast"></div>
+
+<script>
+/* ===========================================================================
+   CONFIG — paste your Supabase keys here to go live.
+   Leave them empty and the app runs in demo mode on this device.
+   Find them in Supabase → Project Settings → API.
+   =========================================================================== */
+var SUPABASE_URL = "";        // e.g. "https://abcdefgh.supabase.co"
+var SUPABASE_ANON_KEY = "";   // the public anon key — safe to ship in the browser
+/* ========================================================================= */
+
+(function(){
+"use strict";
+
+var LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
+var KEY = "custella:v2";
+
+/* ---------- utils ---------- */
+var uid = function(){ return Math.random().toString(36).slice(2,10); };
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){
+  return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+function normPhone(raw){
+  var d = String(raw||"").replace(/\D/g,"");
+  if(d.length>10 && d.slice(0,2)==="91") d=d.slice(2);
+  if(d.length>10 && d[0]==="0") d=d.slice(1);
+  return d.slice(-10);
+}
+function pretty(p){ return p && p.length===10 ? p.slice(0,5)+" "+p.slice(5) : (p||""); }
+function fmtDate(x){ return new Date(x).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}); }
+function fmtTime(x){ return new Date(x).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"}); }
+function today(x){ return new Date(x).toDateString()===new Date().toDateString(); }
+function thisMonth(x){ var d=new Date(x),n=new Date(); return d.getMonth()===n.getMonth()&&d.getFullYear()===n.getFullYear(); }
+function greet(){ var h=new Date().getHours(); return h<12?"Good morning":h<17?"Good afternoon":"Good evening"; }
+function initials(n){ return String(n||"?").trim().split(/\s+/).slice(0,2).map(function(w){return w[0];}).join("").toUpperCase(); }
+function code8(){ return (uid()+uid()).slice(0,8).toUpperCase(); }
+function toast(m){
+  var t=document.getElementById("toast");
+  t.innerHTML='<div class="toast" role="status">'+esc(m)+'</div>';
+  clearTimeout(toast._t); toast._t=setTimeout(function(){t.innerHTML="";},2800);
+}
+function ico(name,size){
+  var s=size||18, p={
+    counter:'<path d="M3 12h18M5 12V6h14v6M7 21v-9M17 21v-9"/>',
+    cards:'<rect x="3" y="4" width="7" height="7" rx="1.5"/><rect x="14" y="4" width="7" height="7" rx="1.5"/><rect x="3" y="15" width="7" height="5" rx="1.5"/><path d="M14 15h3v5M20 15v5"/>',
+    people:'<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><path d="M16.5 5.6a3 3 0 010 5.8M18 20c0-2.4-.9-4-2.2-5"/>',
+    log:'<path d="M5 4h14v16l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 9h6M9 13h4"/>',
+    check:'<path d="M4 12.5l5.5 5.5L20 7"/>',
+    lock:'<rect x="4.5" y="10" width="15" height="10" rx="2.5"/><path d="M8 10V7.5a4 4 0 018 0V10"/>',
+    down:'<path d="M12 4v12M7 12l5 5 5-5M4 20h16"/>',
+    plus:'<path d="M12 5v14M5 12h14"/>',
+    back:'<path d="M15 5l-7 7 7 7"/>',
+    print:'<path d="M7 9V4h10v5"/><rect x="4" y="9" width="16" height="7" rx="2"/><path d="M7 14h10v6H7z"/>',
+    phone:'<path d="M5 4h4l2 5-2.5 1.5a12 12 0 005 5L15 13l5 2v4a1.5 1.5 0 01-1.7 1.5C10.5 19.6 4.4 13.5 3.5 5.7A1.5 1.5 0 015 4z"/>'
+  }[name]||"";
+  return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'+p+'</svg>';
+}
+
+/* ===========================================================================
+   API — one interface, two implementations.
+     local  : this device only. For demos, and for working with no connection.
+     remote : Supabase. So a real phone scanning a real QR reaches a real shop.
+   =========================================================================== */
+var db = { accounts:{}, session:null, slip:0 };
+var auth = { token:null, uid:null, email:null };
+
+function saveLocal(){ try{ window.storage.set(KEY, JSON.stringify(db)); }catch(e){} }
+async function loadLocal(){
+  try{ var r=await window.storage.get(KEY); if(r&&r.value) db=JSON.parse(r.value); }catch(e){}
+  if(!db.accounts) db.accounts={};
+  if(typeof db.slip!=="number") db.slip=0;
+}
+
+async function sb(path, opts){
+  opts = opts||{};
+  var h = { "apikey":SUPABASE_ANON_KEY, "Content-Type":"application/json" };
+  if(opts.auth!==false && auth.token) h["Authorization"]="Bearer "+auth.token;
+  if(opts.prefer) h["Prefer"]=opts.prefer;
+  var res = await fetch(SUPABASE_URL+path, {
+    method:opts.method||"GET", headers:h,
+    body:opts.body?JSON.stringify(opts.body):undefined
+  });
+  var txt = await res.text();
+  var data = txt ? JSON.parse(txt) : null;
+  if(!res.ok) throw new Error((data && (data.message||data.error_description||data.msg||data.hint)) || ("Request failed ("+res.status+")"));
+  return data;
+}
+function rpc(fn, args, anon){ return sb("/rest/v1/rpc/"+fn, {method:"POST", body:args, auth:!anon}); }
+
+var api = {
+  live: LIVE,
+
+  async signUp(email, pass, shop, owner){
+    if(!LIVE){
+      if(db.accounts[email]) throw new Error("That email already has a shop.");
+      db.accounts[email] = { id:email, email:email, pass:pass, shopName:shop, ownerName:owner,
+        cards:[{id:uid(),name:"Walk-in counter",location:shop,code:code8(),created_at:new Date().toISOString()}],
+        customers:[], visits:[],
+        logins:[{at:new Date().toISOString(),who:owner+" (owner)",ok:true}] };
+      db.session={accountId:email}; saveLocal(); return;
+    }
+    var s = await sb("/auth/v1/signup",{method:"POST",auth:false,body:{email:email,password:pass}});
+    if(!s.access_token) throw new Error("Check your inbox to confirm the email, then sign in.");
+    auth = { token:s.access_token, uid:s.user.id, email:email };
+    await rpc("create_business",{ p_name:shop, p_owner_name:owner });
+  },
+
+  async signIn(email, pass){
+    if(!LIVE){
+      var a = db.accounts[email];
+      if(!a) throw new Error("No shop with that email.");
+      if(a.locked) throw new Error("Locked after 5 wrong attempts.");
+      if(a.pass !== pass){
+        a.fails=(a.fails||0)+1;
+        a.logins.unshift({at:new Date().toISOString(),who:email,ok:false});
+        if(a.fails>=5) a.locked=true;
+        saveLocal();
+        throw new Error(a.locked ? "Locked after 5 wrong attempts."
+          : "Wrong password. "+(5-a.fails)+" left — this attempt was recorded.");
+      }
+      a.fails=0; a.logins.unshift({at:new Date().toISOString(),who:a.ownerName+" (owner)",ok:true});
+      db.session={accountId:email}; saveLocal(); return;
+    }
+    var s = await sb("/auth/v1/token?grant_type=password",{method:"POST",auth:false,body:{email:email,password:pass}});
+    auth = { token:s.access_token, uid:s.user.id, email:email };
+  },
+
+  signOut(){
+    if(!LIVE){ db.session=null; saveLocal(); }
+    auth = {token:null,uid:null,email:null};
+  },
+
+  signedIn(){ return LIVE ? !!auth.token : !!(db.session && db.accounts[db.session.accountId]); },
+
+  async load(){
+    if(!LIVE){
+      var a = db.accounts[db.session.accountId];
+      return { shop:{name:a.shopName}, me:{name:a.ownerName,email:a.email},
+        cards:a.cards, customers:a.customers, visits:a.visits, logins:a.logins, locked:!!a.locked };
+    }
+    var mem = await sb("/rest/v1/members?select=business_id,name,role,businesses(name)&user_id=eq."+auth.uid);
+    if(!mem.length) return { needsShop:true };
+    var b = mem[0].business_id, f = "&business_id=eq."+b;
+    var cards = await sb("/rest/v1/scan_cards?select=*&archived=eq.false"+f+"&order=created_at.desc");
+    var cust  = await sb("/rest/v1/customers?select=*&deleted_at=is.null"+f+"&order=last_seen_at.desc&limit=500");
+    var vis   = await sb("/rest/v1/visits?select=*"+f+"&order=visited_at.desc&limit=500");
+    var log   = await sb("/rest/v1/access_log?select=*"+f+"&order=at.desc&limit=50");
+    return {
+      businessId:b,
+      shop:{name:(mem[0].businesses||{}).name||"My shop"},
+      me:{name:mem[0].name||"Owner",email:auth.email},
+      cards:cards.map(function(c){return {id:c.id,name:c.name,location:c.location,code:c.code,created_at:c.created_at};}),
+      customers:cust.map(function(c){return {id:c.id,name:c.name,phone:c.phone,createdAt:c.created_at,lastAt:c.last_seen_at};}),
+      visits:vis.map(function(v){return {id:v.id,customerId:v.customer_id,itemName:v.item_name,location:v.location,note:v.note,at:v.visited_at};}),
+      logins:log.map(function(l){return {at:l.at,who:l.email||"—",ok:l.ok};}),
+      locked:false
+    };
+  },
+
+  async addCard(name, location){
+    if(!LIVE){
+      var a = db.accounts[db.session.accountId];
+      a.cards.unshift({id:uid(),name:name,location:location,code:code8(),created_at:new Date().toISOString()});
+      saveLocal(); return;
+    }
+    await sb("/rest/v1/scan_cards",{method:"POST",prefer:"return=minimal",
+      body:{business_id:S.businessId,name:name,location:location,code:code8()}});
+  },
+
+  async addByHand(name, phone, card){
+    var p = normPhone(phone), now = new Date().toISOString();
+    if(!LIVE){
+      var a = db.accounts[db.session.accountId];
+      var c = a.customers.find(function(x){return x.phone===p;});
+      var back = !!c;
+      if(c){ c.lastAt=now; c.name=name; }
+      else { c={id:uid(),name:name,phone:p,createdAt:now,lastAt:now}; a.customers.unshift(c); }
+      a.visits.unshift({id:uid(),customerId:c.id,itemName:card.name,location:card.location,at:now});
+      saveLocal(); return {returning:back};
+    }
+    var r = await rpc("submit_lead",{ p_code:card.code, p_name:name, p_phone:p });
+    return { returning:!!r.returning };
+  },
+
+  /* ----- customer side: no account, no token, no table access ----- */
+  async getCard(code){
+    if(!LIVE){
+      var hit=null;
+      Object.keys(db.accounts).forEach(function(k){
+        var a=db.accounts[k];
+        var c=a.cards.find(function(x){return x.code===code;});
+        if(c) hit={found:true,card_name:c.name,location:c.location,shop_name:a.shopName,_acct:k};
+      });
+      return hit || {found:false};
+    }
+    return await rpc("get_scan_card",{p_code:code}, true);
+  },
+
+  async submitLead(card, name, phone){
+    var p = normPhone(phone), now = new Date().toISOString();
+    if(!LIVE){
+      var a = db.accounts[card._acct];
+      var c = a.customers.find(function(x){return x.phone===p;});
+      var back = !!c;
+      if(c){ c.lastAt=now; c.name=name; }
+      else { c={id:uid(),name:name,phone:p,createdAt:now,lastAt:now}; a.customers.unshift(c); }
+      a.visits.unshift({id:uid(),customerId:c.id,itemName:card.card_name,location:card.location,at:now});
+      db.slip++; saveLocal();
+      return { returning:back, first_name:name.split(" ")[0], no:db.slip };
+    }
+    var r = await rpc("submit_lead",{p_code:card.code,p_name:name,p_phone:p}, true);
+    return { returning:!!r.returning, first_name:r.first_name, no:Math.floor(Date.now()/1000)%10000 };
+  },
+
+  // Known-number greeting while typing. Live mode stays silent on purpose: we never
+  // tell an anonymous caller whether a number is in someone's database.
+  peek(phone){
+    if(LIVE || !scan || !scan._acct) return null;
+    var a = db.accounts[scan._acct];
+    return a.customers.find(function(c){ return c.phone===normPhone(phone); }) || null;
+  }
+};
+
+/* ===========================================================================
+   state + router
+   =========================================================================== */
+var S = null, view = "signin", q = "", openCust = null, scan = null, slip = null, busy = false;
+
+function scanCodeFromUrl(){
+  var m = String(location.hash||"").match(/^#\/s\/([A-Za-z0-9]+)/);
+  return m ? m[1].toUpperCase() : null;
+}
+function cardLink(code){ return location.origin + location.pathname + "#/s/" + code; }
+function go(v){ view=v; render(); window.scrollTo(0,0); }
+
+var app = document.getElementById("app");
+
+function render(){
+  if(view==="scan" || view==="thanks"){ app.innerHTML = vCustomer(); return wire(); }
+  if(!api.signedIn()){ app.innerHTML = (view==="signup") ? vSignup() : vSignin(); return wire(); }
+  if(!S){ app.innerHTML = '<div class="load">Loading your shop…</div>'; return; }
+  var body = ({counter:vCounter, cards:vCards, customers:vCustomers, access:vAccess}[view] || vCounter)();
+  app.innerHTML = '<div class="shell">'+sidebar()+'<main class="main">'+mobileTop()+body+'</main></div>'+tabs();
+  wire(); drawQR();
+}
+
+/* ---------- chrome ---------- */
+function navItems(){
+  return [["counter","Counter","counter"],["cards","Scan cards","cards"],
+          ["customers","Customers","people"],["access","Access log","log"]];
+}
+function sidebar(){
+  return '<aside class="side">'
+    + '<div class="brand"><span class="brand__mark">CST</span><span class="brand__name">Custella</span></div>'
+    + '<div class="side__shop"><b>'+esc(S.shop.name)+'</b><span>'+esc(S.me.name)+'</span></div>'
+    + '<nav>'+navItems().map(function(n){
+        return '<button data-go="'+n[0]+'"'+(view===n[0]?' aria-current="page"':'')+'>'+ico(n[2])+n[1]+'</button>';
+      }).join("")+'</nav>'
+    + '<div class="side__foot">'
+    + '<span class="chip '+(api.live?"chip--live":"chip--demo")+'">'
+    + '<span style="width:7px;height:7px;border-radius:50%;background:currentColor"></span>'
+    + (api.live?"Live · synced":"Demo · this device")+'</span>'
+    + '<button class="btn btn--sm btn--quiet" data-signout>Sign out</button></div></aside>';
+}
+function mobileTop(){
+  return '<div class="mtop"><span class="brand__mark">CST</span>'
+    + '<div style="margin-right:auto;line-height:1.25"><div style="font-weight:750;font-size:14px">'+esc(S.shop.name)+'</div>'
+    + '<div style="font-size:11.5px;color:#9AA1BC">'+(api.live?"Live · synced":"Demo · this device")+'</div></div>'
+    + '<button class="btn btn--sm btn--quiet" data-signout>Sign out</button></div>';
+}
+function tabs(){
+  return '<nav class="tabs">'+navItems().map(function(n){
+    return '<button data-go="'+n[0]+'"'+(view===n[0]?' aria-current="page"':'')+'>'
+      + ico(n[2],20)+'<span>'+n[1].split(" ")[0]+'</span></button>';
+  }).join("")+'</nav>';
+}
+
+/* ---------- auth ---------- */
+function pitch(){
+  return '<section class="auth__pitch">'
+    + '<div class="brand"><span class="brand__mark">CST</span><span class="brand__name">Custella</span></div>'
+    + '<div><h1>Remember every customer.</h1>'
+    + '<p class="lede" style="margin-top:16px">A customer scans the card on your counter, types their name and number, and it lands in your sheet. No app for them. No notebook for you.</p></div>'
+    + '<div class="pitchlist">'
+    + '<div>'+ico("check")+'<span><b>They never sign in</b>Two fields, one tap, done in eight seconds.</span></div>'
+    + '<div>'+ico("check")+'<span><b>One number, one customer</b>The same person is never saved twice.</span></div>'
+    + '<div>'+ico("check")+'<span><b>Your sheet, any time</b>Download everything to Excel in one click.</span></div>'
+    + '</div></section>';
+}
+function vSignin(){
+  return '<div class="auth">'+pitch()
+    + '<section class="auth__form"><div class="auth__inner">'
+    + '<p class="eyebrow">Shop team only</p><h1>Sign in</h1>'
+    + '<p class="note" style="margin:8px 0 24px">Customers never see this screen.</p>'
+    + '<div class="field"><label for="e">Email</label><input id="e" type="email" autocomplete="username" placeholder="you@shop.in"></div>'
+    + '<div class="field"><label for="p">Password</label><input id="p" type="password" autocomplete="current-password" placeholder="••••••••"></div>'
+    + '<p class="hint" id="hint"></p>'
+    + '<button class="btn btn--big" data-signin>Sign in</button>'
+    + '<p class="note" style="text-align:center;margin-top:18px">New here? <a href="#" data-go="signup">Create your shop</a></p>'
+    + '</div></section></div>';
+}
+function vSignup(){
+  return '<div class="auth">'+pitch()
+    + '<section class="auth__form"><div class="auth__inner">'
+    + '<p class="eyebrow">Takes a minute</p><h1>Create your shop</h1><div style="height:22px"></div>'
+    + '<div class="field"><label for="shop">Shop name</label><input id="shop" placeholder="Odhni Sarees"></div>'
+    + '<div class="field"><label for="owner">Your name</label><input id="owner" placeholder="Ayush"></div>'
+    + '<div class="field"><label for="e">Email</label><input id="e" type="email" autocomplete="username" placeholder="you@shop.in"></div>'
+    + '<div class="field"><label for="p">Password</label><input id="p" type="password" autocomplete="new-password" placeholder="At least 6 characters"></div>'
+    + '<p class="hint" id="hint"></p>'
+    + '<button class="btn btn--big" data-signup>Create shop</button>'
+    + '<p class="note" style="text-align:center;margin-top:18px"><a href="#" data-go="signin">Back to sign in</a></p>'
+    + '</div></section></div>';
+}
+
+/* ---------- counter ---------- */
+function vCounter(){
+  var t = S.visits.filter(function(v){return today(v.at);});
+  var m = S.visits.filter(function(v){return thisMonth(v.at);});
+  var recent = S.visits.slice(0,7);
+  var by = {}; S.visits.forEach(function(v){ by[v.itemName]=(by[v.itemName]||0)+1; });
+  var top = Object.keys(by).sort(function(a,b){return by[b]-by[a];}).slice(0,5);
+
+  return '<div class="stack">'
+    + '<div><p class="eyebrow">'+esc(greet())+', '+esc(S.me.name)+'</p><h1>Today at the counter</h1></div>'
+    + '<section class="hero"><div><div class="hero__n">'+t.length+'</div>'
+    + '<div class="hero__l">'+(t.length===1?"entry":"entries")+' collected today</div></div>'
+    + '<div class="hero__side"><div><b>'+S.customers.length+'</b><span>All customers</span></div>'
+    + '<div><b>'+m.length+'</b><span>This month</span></div></div></section>'
+    + '<div class="grid-2">'
+    + '<button class="btn btn--big" data-go="cards">'+ico("cards",20)+'Show a scan card</button>'
+    + '<button class="btn btn--big btn--dark" data-export>'+ico("down",20)+'Download Excel sheet</button></div>'
+    + '<section class="card"><div class="card__head"><h2>Latest entries</h2>'
+    + '<button class="btn btn--sm btn--ghost" data-go="customers">See all</button></div>'
+    + (recent.length ? '<ul class="list">'+recent.map(function(v){
+        var c = S.customers.find(function(x){return x.id===v.customerId;})||{name:"—",phone:""};
+        return '<li><span class="avatar">'+esc(initials(c.name))+'</span>'
+          + '<div class="list__m"><div class="list__n">'+esc(c.name)+'</div>'
+          + '<div class="list__p">'+esc(pretty(c.phone))+'</div>'
+          + '<div class="list__s">'+esc(v.itemName)+' · '+esc(v.location)+'</div></div>'
+          + '<span class="note num">'+fmtTime(v.at)+'</span></li>';
+      }).join("")+'</ul>'
+      : '<div class="empty"><h3>Nothing yet today</h3>'
+        + '<p class="note">Put a scan card on the counter. The first entry appears here the moment someone scans it.</p>'
+        + '<button class="btn" data-go="cards">Make a scan card</button></div>')
+    + '</section>'
+    + (top.length ? '<section class="card"><div class="card__head"><h2>Most asked for</h2></div><table><tbody>'
+        + top.map(function(k){ return '<tr><td>'+esc(k)+'</td><td class="num" style="text-align:right;color:var(--muted)">'+by[k]+'</td></tr>'; }).join("")
+        + '</tbody></table></section>' : '')
+    + '</div>';
+}
+
+/* ---------- scan cards ---------- */
+function vCards(){
+  return '<div class="stack">'
+    + '<div><p class="eyebrow">Scan cards</p><h1>What are you cataloguing?</h1>'
+    + '<p class="note" style="margin-top:9px;max-width:62ch">Give each item, counter or stall a name and a place. '
+    + 'Custella makes a card you can print. The customer scans it, types their name and number, and it lands in your sheet.</p></div>'
+    + '<section class="card card__pad"><div class="grid-2">'
+    + '<div class="field"><label for="c-name">Item or counter name</label><input id="c-name" placeholder="Banarasi dupattas"></div>'
+    + '<div class="field"><label for="c-loc">Where it is</label><input id="c-loc" placeholder="Delhi Exhibition · Stall 12"></div>'
+    + '</div><p class="hint" id="hint"></p>'
+    + '<button class="btn" data-addcard>'+ico("plus")+'Make scan card</button></section>'
+    + (S.cards.length ? '<div class="cards">'+S.cards.map(qcard).join("")+'</div>'
+        : '<section class="card empty"><h3>No cards yet</h3><p class="note">Add your first item above.</p></section>')
+    + '<p class="note">Print these and tape them to the counter, or just show one on your phone screen.</p></div>';
+}
+function qcard(c){
+  return '<article class="qc"><div class="qc__top"><p class="eyebrow">Scan to leave your number</p>'
+    + '<div class="qc__n">'+esc(c.name)+'</div><div class="qc__w">'+esc(c.location)+'</div></div>'
+    + '<div class="qc__perf"></div><div class="qc__b">'
+    + '<div class="qc__qr" data-qr="'+esc(c.code)+'"></div>'
+    + '<p class="qc__ask">Point your camera here</p><p class="qc__code">'+esc(c.code)+'</p></div>'
+    + '<div class="qc__acts">'
+    + '<button class="btn btn--sm btn--ghost" data-open="'+esc(c.code)+'">Open form</button>'
+    + '<button class="btn btn--sm btn--ghost" data-print>'+ico("print",15)+'Print</button></div></article>';
+}
+function drawQR(){
+  var n = document.querySelectorAll("[data-qr]");
+  if(!n.length) return;
+  n.forEach(function(el){
+    if(el.dataset.done) return;
+    var code = el.getAttribute("data-qr");
+    if(typeof QRCode === "undefined"){
+      el.innerHTML = '<span class="note" style="text-align:center;padding:10px">QR needs a connection<br>the first time.<br><b>'+esc(code)+'</b></span>';
+      return;
+    }
+    el.innerHTML = "";
+    new QRCode(el,{ text:cardLink(code), width:130, height:130,
+      colorDark:"#12142B", colorLight:"#ffffff", correctLevel:QRCode.CorrectLevel.M });
+    el.dataset.done = "1";
+  });
+}
+
+/* ---------- customers ---------- */
+function vCustomers(){
+  if(openCust){
+    var c = S.customers.find(function(x){return x.id===openCust;});
+    if(c) return vProfile(c);
+    openCust = null;
+  }
+  var needle = q.trim().toLowerCase();
+  var rows = S.customers.filter(function(c){
+    if(!needle) return true;
+    var vs = S.visits.filter(function(v){return v.customerId===c.id;});
+    return (c.name+" "+c.phone+" "+vs.map(function(v){return v.itemName+" "+v.location;}).join(" "))
+      .toLowerCase().indexOf(needle) > -1;
+  });
+  return '<div class="stack">'
+    + '<div class="bar"><div class="spacer"><p class="eyebrow">'+S.customers.length+' saved</p><h1>Customers</h1></div>'
+    + '<button class="btn btn--ghost" data-manual>'+ico("plus")+'Add by hand</button>'
+    + '<button class="btn btn--dark" data-export>'+ico("down")+'Excel sheet</button></div>'
+    + '<div id="manual"></div>'
+    + '<input class="search" id="q" placeholder="Search name, number, item or place" value="'+esc(q)+'">'
+    + '<section class="card">'
+    + (rows.length ? '<ul class="list">'+rows.map(function(c){
+        var n = S.visits.filter(function(v){return v.customerId===c.id;}).length;
+        return '<li><span class="avatar">'+esc(initials(c.name))+'</span>'
+          + '<div class="list__m"><div class="list__n">'+esc(c.name)+'</div>'
+          + '<div class="list__p">'+esc(pretty(c.phone))+'</div>'
+          + '<div class="list__s">Last seen '+fmtDate(c.lastAt)+'</div></div>'
+          + '<span class="tag">'+n+(n===1?" visit":" visits")+'</span>'
+          + '<button class="btn btn--sm btn--ghost" data-cust="'+esc(c.id)+'">Open</button></li>';
+      }).join("")+'</ul>'
+      : '<div class="empty"><h3>'+(needle?"No match":"No customers yet")+'</h3><p class="note">'
+        + (needle?"Try just the last four digits of the number.":"They appear here the moment someone scans your card.")+'</p></div>')
+    + '</section></div>';
+}
+function vProfile(c){
+  var vs = S.visits.filter(function(v){return v.customerId===c.id;});
+  return '<div class="stack">'
+    + '<button class="btn btn--sm btn--ghost" data-back style="justify-self:start">'+ico("back",15)+'All customers</button>'
+    + '<section class="card card__pad"><div class="bar" style="gap:14px">'
+    + '<span class="avatar" style="width:52px;height:52px;border-radius:14px;font-size:18px">'+esc(initials(c.name))+'</span>'
+    + '<div class="spacer"><h1 style="font-size:24px">'+esc(c.name)+'</h1>'
+    + '<p class="num" style="font-size:17px;color:var(--ink-2);margin-top:3px">'+esc(pretty(c.phone))+'</p></div>'
+    + '<a class="btn btn--ghost" href="tel:+91'+esc(c.phone)+'">'+ico("phone")+'Call</a></div>'
+    + '<p class="note" style="margin-top:14px">First saved '+fmtDate(c.createdAt)+' · '+vs.length+(vs.length===1?" visit":" visits")+'</p></section>'
+    + '<section class="card"><div class="card__head"><h2>Visit history</h2></div><ul class="list">'
+    + vs.map(function(v){
+        return '<li><div class="list__m"><div class="list__n">'+esc(v.itemName)+'</div>'
+          + '<div class="list__s">'+esc(v.location)+(v.note?" · "+esc(v.note):"")+'</div></div>'
+          + '<span class="note num">'+fmtDate(v.at)+'</span></li>';
+      }).join("")+'</ul></section></div>';
+}
+
+/* ---------- access log ---------- */
+function vAccess(){
+  return '<div class="stack">'
+    + '<div><p class="eyebrow">Who opened this shop</p><h1>Access log</h1>'
+    + '<p class="note" style="margin-top:9px;max-width:62ch">Every sign-in and every wrong password is written down here. '
+    + 'Five wrong attempts in a row lock the account.</p></div>'
+    + '<section class="card"><table><thead><tr><th>When</th><th>Who</th><th style="text-align:right">Result</th></tr></thead><tbody>'
+    + (S.logins.length ? S.logins.map(function(l){
+        return '<tr><td class="num" style="font-size:13px">'+fmtDate(l.at)+' · '+fmtTime(l.at)+'</td>'
+          + '<td>'+esc(l.who)+'</td><td style="text-align:right"><span class="tag '+(l.ok?"tag--ok":"tag--flag")+'">'
+          + (l.ok?"Signed in":"Wrong password")+'</span></td></tr>';
+      }).join("") : '<tr><td colspan="3" class="note" style="padding:24px">Nothing recorded yet.</td></tr>')
+    + '</tbody></table></section>'
+    + (S.locked ? '<section class="card card__pad"><h3>Account locked</h3>'
+        + '<p class="note" style="margin:6px 0 14px">Too many wrong attempts.</p>'
+        + '<button class="btn" data-unlock>Unlock</button></section>' : '')
+    + '</div>';
+}
+
+/* ---------- customer world ---------- */
+function vCustomer(){
+  if(view==="thanks"){
+    return '<div class="cust"><div class="cust__in"><div class="slip">'
+      + '<div class="slip__t">'+ico("check",26)+'</div>'
+      + '<h2>'+esc(slip.returning ? "Welcome back, "+slip.first_name : "Saved, "+slip.first_name)+'</h2>'
+      + '<p class="note" style="margin-top:9px">'+esc(scan.shop_name)+' has your number. '
+      + 'They will call you about '+esc(String(scan.card_name).toLowerCase())+'.</p>'
+      + '<hr class="slip__r">'
+      + '<p class="num" style="font-size:17px">'+esc(pretty(slip.phone))+'</p>'
+      + '<p class="note">'+esc(scan.location)+'</p>'
+      + '<p class="slip__no">SLIP '+String(slip.no).padStart(4,"0")+'</p></div>'
+      + '<p class="note" style="color:#868DAB;text-align:center;margin-top:22px">You can close this page.</p>'
+      + '<div style="text-align:center;margin-top:14px"><button class="btn btn--sm btn--quiet" data-leave>Back to the shop view</button></div>'
+      + '</div></div>';
+  }
+  if(!scan || !scan.found){
+    return '<div class="cust"><div class="cust__in"><div class="panel" style="text-align:center">'
+      + '<h2>This card is not active</h2><p class="note" style="margin-top:9px">Ask the shop for a fresh one.</p>'
+      + '<div style="margin-top:18px"><button class="btn btn--ghost btn--sm" data-leave>Go to the shop view</button></div>'
+      + '</div></div></div>';
+  }
+  return '<div class="cust"><div class="cust__in">'
+    + '<div class="cust__shop"><p class="eyebrow">You scanned</p><h2>'+esc(scan.shop_name)+'</h2></div>'
+    + '<div class="panel">'
+    + '<div class="cust__item"><p class="eyebrow" style="margin-bottom:3px">Asking about</p>'
+    + '<div style="font-weight:750">'+esc(scan.card_name)+'</div>'
+    + '<div class="note">'+esc(scan.location)+'</div></div>'
+    + '<div class="field"><label for="f-name">Your name</label><input id="f-name" autocomplete="name" placeholder="Priya Sharma"></div>'
+    + '<div class="field"><label for="f-phone">Mobile number</label>'
+    + '<input id="f-phone" class="phone" inputmode="numeric" autocomplete="tel" maxlength="15" placeholder="98765 43210"></div>'
+    + '<p class="hint" id="hint"></p>'
+    + '<button class="btn btn--big" data-submit>Send my details</button>'
+    + '<div class="privacy">'+ico("lock",16)+'<span>No account, no password, no app. '
+    + 'Your name and number go to '+esc(scan.shop_name)+' only.</span></div>'
+    + '</div></div></div>';
+}
+
+/* ===========================================================================
+   actions
+   =========================================================================== */
+function val(id){ var n=document.getElementById(id); return n?n.value.trim():""; }
+function hint(msg,kind){
+  var h=document.getElementById("hint"); if(!h) return;
+  h.className="hint"+(kind?" hint--"+kind:""); h.textContent=msg||"";
+}
+async function guard(sel, fn){
+  if(busy) return; busy=true;
+  var b=document.querySelector(sel), label=b?b.innerHTML:null;
+  if(b){ b.disabled=true; b.textContent="Working…"; }
+  try{ await fn(); }
+  catch(err){ hint(err.message||"Something went wrong","bad"); }
+  finally{
+    busy=false;
+    var b2=document.querySelector(sel);
+    if(b2 && label){ b2.disabled=false; b2.innerHTML=label; }
+  }
+}
+async function refresh(){ S = await api.load(); }
+
+async function doSignin(){
+  await guard("[data-signin]", async function(){
+    var e=val("e"), p=val("p");
+    if(!e||!p) throw new Error("Email and password, please.");
+    await api.signIn(e,p); await refresh();
+    if(S && S.needsShop){ S=null; go("signup"); return; }
+    go("counter");
+  });
+}
+async function doSignup(){
+  await guard("[data-signup]", async function(){
+    var shop=val("shop"), owner=val("owner"), e=val("e"), p=val("p");
+    if(!shop||!owner||!e||p.length<6) throw new Error("Fill everything; password needs 6+ characters.");
+    await api.signUp(e,p,shop,owner); await refresh(); go("counter"); toast("Shop created");
+  });
+}
+async function doAddCard(){
+  await guard("[data-addcard]", async function(){
+    var n=val("c-name"), l=val("c-loc");
+    if(!n||!l) throw new Error("Both a name and a place, please.");
+    await api.addCard(n,l); await refresh(); render(); toast("Scan card ready");
+  });
+}
+async function doSubmit(){
+  await guard("[data-submit]", async function(){
+    var n=val("f-name"), p=val("f-phone");
+    if(!n) throw new Error("Your name, please.");
+    if(normPhone(p).length!==10) throw new Error("That number needs 10 digits.");
+    var r = await api.submitLead(scan,n,p);
+    slip = { first_name:r.first_name||n.split(" ")[0], returning:r.returning, no:r.no, phone:normPhone(p) };
+    go("thanks");
+  });
+}
+function manualForm(){
+  var box=document.getElementById("manual");
+  if(!box) return;
+  if(box.dataset.on){ box.innerHTML=""; box.dataset.on=""; return; }
+  box.dataset.on="1";
+  box.innerHTML = '<section class="card card__pad"><h3 style="margin-bottom:14px">Add a customer yourself</h3>'
+    + '<div class="grid-2">'
+    + '<div class="field"><label for="m-name">Name</label><input id="m-name" placeholder="Priya Sharma"></div>'
+    + '<div class="field"><label for="m-phone">Mobile number</label><input id="m-phone" class="phone" inputmode="numeric" placeholder="98765 43210"></div>'
+    + '</div><p class="hint" id="m-hint"></p><button class="btn" data-savemanual>Save customer</button></section>';
+  box.querySelector("[data-savemanual]").addEventListener("click", async function(){
+    var n=val("m-name"), p=val("m-phone"), h=document.getElementById("m-hint");
+    if(!n || normPhone(p).length!==10){ h.className="hint hint--bad"; h.textContent="A name, and a 10 digit number."; return; }
+    if(!S.cards.length){ h.className="hint hint--bad"; h.textContent="Make one scan card first — it names the place."; return; }
+    try{
+      var r = await api.addByHand(n,p,S.cards[0]);
+      await refresh(); render(); toast(r.returning?"Visit added to an existing customer":"Customer saved");
+    }catch(err){ h.className="hint hint--bad"; h.textContent=err.message; }
+  });
+  var f=document.getElementById("m-name"); if(f) f.focus();
+}
+
+function exportExcel(){
+  if(!S.customers.length){ toast("Nothing to export yet"); return; }
+  var customers = S.customers.map(function(c){
+    var vs = S.visits.filter(function(v){return v.customerId===c.id;});
+    return { "Name":c.name, "Mobile":c.phone, "First saved":fmtDate(c.createdAt),
+      "Last visit":fmtDate(c.lastAt), "Visits":vs.length,
+      "Interested in":Array.from(new Set(vs.map(function(v){return v.itemName;}))).join(", "),
+      "Last place":vs.length?vs[0].location:"" };
+  });
+  var visits = S.visits.map(function(v){
+    var c = S.customers.find(function(x){return x.id===v.customerId;})||{};
+    return { "Date":fmtDate(v.at), "Time":fmtTime(v.at), "Name":c.name||"", "Mobile":c.phone||"",
+      "Item":v.itemName, "Place":v.location };
+  });
+  var base = S.shop.name.replace(/[^\w]+/g,"-").toLowerCase()+"-customers-"+new Date().toISOString().slice(0,10);
+
+  if(typeof XLSX === "undefined"){
+    var rows=[["Name","Mobile","First saved","Last visit","Visits","Interested in"]];
+    customers.forEach(function(c){ rows.push([c.Name,c.Mobile,c["First saved"],c["Last visit"],c.Visits,c["Interested in"]]); });
+    var csv="\uFEFF"+rows.map(function(r){ return r.map(function(f){ return '"'+String(f).replace(/"/g,'""')+'"'; }).join(","); }).join("\n");
+    var url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+    var a=document.createElement("a"); a.href=url; a.download=base+".csv"; a.click();
+    URL.revokeObjectURL(url); toast("CSV downloaded"); return;
+  }
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(customers), "Customers");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(visits), "Visits");
+  XLSX.writeFile(wb, base+".xlsx");
+  toast("Excel sheet downloaded");
+}
+
+/* ===========================================================================
+   wiring
+   =========================================================================== */
+function on(sel, fn){ var n=document.querySelector(sel); if(n) n.addEventListener("click",fn); }
+
+function wire(){
+  document.querySelectorAll("[data-go]").forEach(function(n){
+    n.addEventListener("click", function(e){ e.preventDefault(); go(n.getAttribute("data-go")); });
+  });
+  on("[data-signin]", doSignin);
+  on("[data-signup]", doSignup);
+  on("[data-addcard]", doAddCard);
+  on("[data-submit]", doSubmit);
+  on("[data-manual]", manualForm);
+  on("[data-print]", function(){ window.print(); });
+  on("[data-back]", function(){ openCust=null; render(); });
+  on("[data-leave]", function(){ scan=null; location.hash=""; go(api.signedIn()?"counter":"signin"); });
+  on("[data-unlock]", function(){
+    if(api.live) return;
+    var a=db.accounts[db.session.accountId]; a.locked=false; a.fails=0; saveLocal();
+    refresh().then(render); toast("Unlocked");
+  });
+  document.querySelectorAll("[data-signout]").forEach(function(n){
+    n.addEventListener("click", function(){ api.signOut(); S=null; go("signin"); });
+  });
+  document.querySelectorAll("[data-export]").forEach(function(n){ n.addEventListener("click", exportExcel); });
+  document.querySelectorAll("[data-cust]").forEach(function(n){
+    n.addEventListener("click", function(){ openCust=n.getAttribute("data-cust"); render(); });
+  });
+  document.querySelectorAll("[data-open]").forEach(function(n){
+    n.addEventListener("click", async function(){
+      var code=n.getAttribute("data-open");
+      scan = await api.getCard(code);
+      if(scan) scan.code = code;
+      go("scan");
+    });
+  });
+
+  var s=document.getElementById("q");
+  if(s){
+    s.addEventListener("input", function(){
+      var pos=s.selectionStart; q=s.value; render();
+      var s2=document.getElementById("q");
+      if(s2){ s2.focus(); s2.setSelectionRange(pos,pos); }
+    });
+  }
+
+  var ph=document.getElementById("f-phone");
+  if(ph){
+    ph.addEventListener("input", function(){
+      if(normPhone(ph.value).length < 10) return hint("");
+      var known = api.peek(ph.value);
+      if(known){
+        hint("We know you — welcome back, "+known.name.split(" ")[0]+".","known");
+        var nm=document.getElementById("f-name"); if(nm && !nm.value) nm.value=known.name;
+      }else hint("Looks good. One tap and you're saved.","ok");
+    });
+  }
+
+  document.querySelectorAll("input").forEach(function(n){
+    n.addEventListener("keydown", function(e){
+      if(e.key!=="Enter") return;
+      var b=document.querySelector("[data-submit],[data-signin],[data-signup],[data-addcard]");
+      if(b) b.click();
+    });
+  });
+}
+
+/* ===========================================================================
+   boot
+   =========================================================================== */
+window.addEventListener("hashchange", function(){ if(scanCodeFromUrl()) boot(); });
+
+async function boot(){
+  var code = scanCodeFromUrl();
+  if(code){
+    if(!api.live) await loadLocal();
+    scan = await api.getCard(code);
+    if(scan) scan.code = code;
+    view="scan"; render(); return;
+  }
+  if(!api.live){
+    await loadLocal();
+    if(api.signedIn()){ await refresh(); view="counter"; } else view="signin";
+    render(); return;
+  }
+  view = api.signedIn() ? "counter" : "signin";
+  if(api.signedIn()) await refresh();
+  render();
+}
+boot();
+})();
+</script>
+</body>
+</html>
