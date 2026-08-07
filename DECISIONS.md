@@ -85,3 +85,93 @@ to that public URL. The Expo app therefore opens the live GitHub Pages app in a 
 instead of maintaining a second implementation that could drift or generate local-only
 QR links. The shell is pinned to Expo SDK 54 because that is the installed Expo Go
 runtime.
+
+---
+
+## Phase 2 — Harden
+
+### D-008 · Rate limits are deliberately loose, and the per-card ceiling is the real one
+`submit_lead` allows 30 submissions per connection per 10 minutes, and 300 per card per
+hour. Both numbers are far above any real stall's throughput and far below what a script
+needs to be useful.
+
+The per-IP limit cannot be tight, and this is the important part: **at an exhibition every
+customer is on the same venue wifi, and Indian mobile carriers put thousands of subscribers
+behind one CGNAT address.** A strict per-IP rule would block the hundredth genuine customer
+of a busy afternoon. So the per-card ceiling does the real work and the per-IP one exists
+only to stop a runaway loop.
+
+What this does **not** stop: a determined attacker pacing requests under the limit. That
+needs a CAPTCHA, which would break rule 1 of the product — the customer never signs in and
+never gets an extra step. Verified: 30 accepted, blocked from #31 with a message a customer
+can act on.
+
+### D-009 · A stored customer name is never overwritten
+Previously every repeat submit rewrote `customers.name`. One mistyped digit — a customer
+entering someone else's number by accident — silently renamed a different person's record.
+The name is now written once, on creation, and only backfilled if it is somehow blank.
+
+Consequence: a genuine correction can no longer be made through the customer form. That is
+the right trade — silent corruption of an existing record is far worse than a name that
+needs the shop to fix it. Editing from the shop side is in the backlog.
+
+### D-010 · Two bot signals, both failing silently
+A honeypot field no human can see, and a two-second minimum time-on-form no human can beat.
+Both respond with the ordinary success screen rather than an error, because a bot told it
+failed simply retries with the field removed.
+
+The risk this accepts: a password manager auto-filling the hidden "Company" field would
+make a real submission vanish. Judged small — the field is off-screen, `aria-hidden`, and
+`tabindex="-1"` — and the rate limiter is the actual defence. Revisit if any customer ever
+reports submitting and not being called.
+
+### D-011 · The Access Log records only what we can honestly observe
+Supabase's `auth.audit_log_entries` is empty on this plan, so these rows are written by our
+own `log_signin()` and `log_failed_signin()`.
+
+The screen previously promised "five wrong attempts in a row lock the account". **Nothing
+implemented that.** Sign-in happens inside GoTrue, which we cannot block from a Postgres
+function, so the claim was deleted rather than faked. The copy now describes exactly what
+happens: successful sign-ins and wrong passwords tried against this shop's email are
+recorded. Real lockout needs GoTrue-level control and is in the backlog.
+
+`log_failed_signin` is callable by `anon` — it has to be, since a failed sign-in has no
+session — so it is throttled to 20 per email per hour and silently ignores emails that
+belong to no shop. It cannot be used to flood a shop's screen or to probe which emails
+exist.
+
+### D-012 · Sessions survive the reload and the hour
+The access token was held in a plain variable: refreshing the page signed the shopkeeper
+out, and after roughly an hour every request failed with an opaque `401` mid-shift. Both
+tokens now persist in `localStorage`, the refresh token is exchanged on boot, and any `401`
+triggers one automatic refresh-and-replay.
+
+`window.storage` — used by the original demo-mode persistence — is not a browser API at
+all. The calls were wrapped in `try/catch`, so they failed silently and demo mode lost
+everything on reload. Replaced with `localStorage`.
+
+### D-013 · Card codes are generated in the database
+The browser used `Math.random()`, which is not uniformly distributed, can return fewer than
+8 characters, and never checked for collisions. That code is the only thing standing between
+a stranger and a shop's submit endpoint. `create_scan_card()` now generates it server-side
+with a uniqueness retry.
+
+### D-014 · A consent notice, because this is personal data collected from the public
+Name and mobile number taken from members of the public in India puts this under the DPDP
+Act. The form now states who keeps the data, what for, that it is not sold or shared, and
+that the person can ask to see, correct, or delete it.
+
+This is a product decision to be plain with people, not legal advice, and it has not been
+reviewed by anyone qualified. Worth ten minutes with someone who is before real scale.
+
+### D-015 · The tests read the shipping code, not a copy
+`test/identity.test.js` extracts `normPhone()` out of `index.html` and tests that. A copied
+implementation would drift from the deployed one and pass while the product broke. CI runs
+the 7 tests, parses the app's script, and validates the manifest on every push — there is
+no build step that would otherwise catch a syntax error before it reached a shop counter.
+
+### D-016 · Installable, but still one codebase
+A PWA manifest and icons make the shop side install to the home screen and open fullscreen,
+with no app store and no second implementation to keep in step. The customer side is
+untouched: they still scan and type, and never install anything. See BACKLOG for the
+native-app question this does not settle.
