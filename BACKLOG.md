@@ -25,6 +25,20 @@ Numbering matches the original review. #3 is fixed (see DECISIONS D-004); #8 is 
 | 9 | Two CDN scripts (`qrcodejs`, `xlsx`) load with no SRI integrity hashes. | 🟢 | 2 |
 | 10 | Manual adds are recorded as `source='scan'`. Customer and visit lists cap at 500 rows, so search silently misses older records as a shop grows. | 🟢 | 3 |
 
+## Gaps found in use, not in review
+
+- [ ] **No password reset, anywhere.** A shopkeeper who forgets their password is locked
+      out permanently — no "Forgot password" link, no recovery flow, no way back except
+      someone with database access resetting it by hand. Found when 25 consecutive
+      sign-ins failed against a healthy account. For a product whose user is explicitly
+      non-technical, this is close to a launch blocker. Supabase's recovery email works
+      (`/verify` traffic is already in the logs), so it's a small piece of work:
+      a link on the sign-in screen calling `/auth/v1/recover`.
+      **Not in the Phase 2 or Phase 3 lists — needs a decision on where it goes.**
+
+- [x] ~~Error messages spoke Supabase, not shopkeeper.~~ "Invalid login credentials" now
+      reads "Wrong email or password. Check both and try again."
+
 ## Phase 3 — what a real shop asks for within a week
 
 - [ ] Staff accounts: owner invites by email; staff can add and view but not delete or
