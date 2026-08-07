@@ -317,6 +317,11 @@ var api = {
           var t = await sb("/auth/v1/token?grant_type=password",{method:"POST",auth:false,body:{email:email,password:pass}});
           tok = { token:t.access_token, uid:t.user.id };
         }catch(e2){
+          // Distinguish "not confirmed yet" from "wrong password" — collapsing both into
+          // the inbox message sends someone hunting through their email for a problem
+          // that is actually a typo.
+          if(/invalid login credentials/i.test(String((e2 && e2.message) || "")))
+            throw new Error("That email already has an account. Sign in with its password instead — or if you've forgotten it, say so.");
           throw new Error("Confirm the email in your inbox first, then come back and create your shop.");
         }
       }
@@ -341,7 +346,15 @@ var api = {
       a.fails=0; a.logins.unshift({at:new Date().toISOString(),who:a.ownerName+" (owner)",ok:true});
       db.session={accountId:email}; saveLocal(); return;
     }
-    var s = await sb("/auth/v1/token?grant_type=password",{method:"POST",auth:false,body:{email:email,password:pass}});
+    var s;
+    try{
+      s = await sb("/auth/v1/token?grant_type=password",{method:"POST",auth:false,body:{email:email,password:pass}});
+    }catch(e){
+      // "Invalid login credentials" is Supabase's wording, not a shopkeeper's.
+      if(/invalid login credentials/i.test(String((e && e.message) || "")))
+        throw new Error("Wrong email or password. Check both and try again.");
+      throw e;
+    }
     auth = { token:s.access_token, uid:s.user.id, email:email };
   },
 
