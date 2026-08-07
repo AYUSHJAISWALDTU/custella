@@ -78,3 +78,10 @@ Each claim in this file was checked against the running system rather than reaso
 | the deployed page is the page we wrote | SHA-256 of served bytes == local file |
 
 Test fixtures were created with a fixed UUID, used, and deleted. Production is clean.
+
+### D-007 · The Expo app is a thin shell around the live site
+The product already has one deployed, phone-sized interface and its QR cards must point
+to that public URL. The Expo app therefore opens the live GitHub Pages app in a WebView
+instead of maintaining a second implementation that could drift or generate local-only
+QR links. The shell is pinned to Expo SDK 54 because that is the installed Expo Go
+runtime.

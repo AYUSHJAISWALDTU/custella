@@ -1,0 +1,35 @@
+name: tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  identity:
+    name: phone-identity rule
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # The rule the whole product rests on: one number is one customer.
+      - name: normalisation tests
+        run: node --test test/identity.test.js
+
+      # A syntax error in the single-file app would ship a blank page to every
+      # shop counter, and there is no build step to catch it.
+      - name: app parses
+        run: |
+          node -e "
+            const fs=require('fs');
+            const html=fs.readFileSync('index.html','utf8');
+            const js=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].pop()[1];
+            new (require('vm').Script)(js);
+            console.log('index.html script parses');
+          "
+
+      - name: manifest is valid JSON
+        run: node -e "JSON.parse(require('fs').readFileSync('manifest.webmanifest','utf8')); console.log('manifest ok')"

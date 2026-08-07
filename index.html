@@ -4,8 +4,21 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Custella — remember every customer</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#12142B">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Custella">
+<meta name="description" content="Remember every customer. A scan card on your counter, and every visitor's name and number lands in your sheet.">
+<!-- integrity pins these to the exact bytes reviewed. A tampered CDN copy simply
+     will not execute, and the app degrades instead of running someone else's code. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
+        integrity="sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU"
+        crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"
+        integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw"
+        crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
 
 <style>
 :root{
@@ -179,6 +192,12 @@ th{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--mu
 .panel{background:#fff;border-radius:20px;padding:24px;box-shadow:var(--sh-2)}
 .cust__item{border:1.5px dashed var(--line);border-radius:13px;padding:13px 15px;margin-bottom:20px;background:#FAFAFE}
 .privacy{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--muted);margin-top:18px;padding-top:15px;border-top:1px solid var(--line-soft)}
+.privacy details{margin-top:6px}
+.privacy summary{cursor:pointer;color:var(--stamp);font-weight:600}
+.privacy details p{margin-top:7px;line-height:1.5}
+/* Honeypot: invisible to people, irresistible to naive bots. Kept in the layout
+   rather than display:none so simple scrapers still see and fill it. */
+.hp{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}
 .slip{background:#fff;border-radius:20px;padding:30px 24px;text-align:center;box-shadow:var(--sh-2);animation:print .55s cubic-bezier(.2,.9,.3,1.05) both}
 @keyframes print{from{transform:translateY(-26px);opacity:0}to{transform:none;opacity:1}}
 @media(prefers-reduced-motion:reduce){.slip{animation:none}}
@@ -265,24 +284,73 @@ function ico(name,size){
      remote : Supabase. So a real phone scanning a real QR reaches a real shop.
    =========================================================================== */
 var db = { accounts:{}, session:null, slip:0 };
-var auth = { token:null, uid:null, email:null };
+var auth = { token:null, refresh:null, uid:null, email:null };
+var SESSION_KEY = "custella:session";
 
-function saveLocal(){ try{ window.storage.set(KEY, JSON.stringify(db)); }catch(e){} }
+// window.storage is not a browser API — these silently did nothing, so demo mode
+// lost everything on reload. localStorage is the real one.
+function saveLocal(){ try{ localStorage.setItem(KEY, JSON.stringify(db)); }catch(e){} }
 async function loadLocal(){
-  try{ var r=await window.storage.get(KEY); if(r&&r.value) db=JSON.parse(r.value); }catch(e){}
+  try{ var r=localStorage.getItem(KEY); if(r) db=JSON.parse(r); }catch(e){}
   if(!db.accounts) db.accounts={};
   if(typeof db.slip!=="number") db.slip=0;
 }
+
+/* ---------- session that survives a reload ----------
+   The access token dies after about an hour; the refresh token outlives it. We
+   store both, and swap an expired access token for a fresh one on boot and again
+   whenever a request comes back 401. Without this the shopkeeper is thrown out
+   mid-shift with an opaque error. */
+function saveSession(){
+  try{
+    if(auth.token) localStorage.setItem(SESSION_KEY, JSON.stringify(auth));
+    else localStorage.removeItem(SESSION_KEY);
+  }catch(e){}
+}
+function loadSession(){
+  try{
+    var r = localStorage.getItem(SESSION_KEY);
+    if(r){ var a = JSON.parse(r); if(a && a.token) auth = a; }
+  }catch(e){}
+}
+async function refreshToken(){
+  if(!auth.refresh) return false;
+  try{
+    var s = await sb("/auth/v1/token?grant_type=refresh_token",
+      {method:"POST", auth:false, body:{refresh_token:auth.refresh}});
+    if(!s.access_token) return false;
+    auth = { token:s.access_token, refresh:s.refresh_token||auth.refresh,
+             uid:(s.user&&s.user.id)||auth.uid, email:(s.user&&s.user.email)||auth.email };
+    saveSession();
+    return true;
+  }catch(e){ return false; }
+}
+
+/** Thrown when the request never reached Supabase at all. */
+function NetworkError(){ var e=new Error("No internet just now. Check your connection and try again."); e.offline=true; return e; }
 
 async function sb(path, opts){
   opts = opts||{};
   var h = { "apikey":SUPABASE_ANON_KEY, "Content-Type":"application/json" };
   if(opts.auth!==false && auth.token) h["Authorization"]="Bearer "+auth.token;
   if(opts.prefer) h["Prefer"]=opts.prefer;
-  var res = await fetch(SUPABASE_URL+path, {
-    method:opts.method||"GET", headers:h,
-    body:opts.body?JSON.stringify(opts.body):undefined
-  });
+  var res;
+  try{
+    res = await fetch(SUPABASE_URL+path, {
+      method:opts.method||"GET", headers:h,
+      body:opts.body?JSON.stringify(opts.body):undefined
+    });
+  }catch(e){
+    // fetch only rejects when the request never left the device.
+    throw NetworkError();
+  }
+
+  // An expired access token looks like a hard failure. Swap it for a fresh one
+  // and replay the request once, so an hour-old tab keeps working.
+  if(res.status===401 && opts.auth!==false && auth.token && !opts._retry){
+    if(await refreshToken()){ opts._retry = true; return sb(path, opts); }
+  }
+
   var txt = await res.text();
   var data = txt ? JSON.parse(txt) : null;
   if(!res.ok) throw new Error((data && (data.message||data.error_description||data.msg||data.hint)) || ("Request failed ("+res.status+")"));
@@ -310,12 +378,12 @@ var api = {
       var tok = null;
       try{
         var s = await sb("/auth/v1/signup",{method:"POST",auth:false,body:{email:email,password:pass}});
-        if(s.access_token) tok = { token:s.access_token, uid:s.user.id };
+        if(s.access_token) tok = { token:s.access_token, refresh:s.refresh_token, uid:s.user.id };
       }catch(e){ /* already registered — fall through and just sign in */ }
       if(!tok){
         try{
           var t = await sb("/auth/v1/token?grant_type=password",{method:"POST",auth:false,body:{email:email,password:pass}});
-          tok = { token:t.access_token, uid:t.user.id };
+          tok = { token:t.access_token, refresh:t.refresh_token, uid:t.user.id };
         }catch(e2){
           // Distinguish "not confirmed yet" from "wrong password" — collapsing both into
           // the inbox message sends someone hunting through their email for a problem
@@ -325,7 +393,8 @@ var api = {
           throw new Error("Confirm the email in your inbox first, then come back and create your shop.");
         }
       }
-      auth = { token:tok.token, uid:tok.uid, email:email };
+      auth = { token:tok.token, refresh:tok.refresh, uid:tok.uid, email:email };
+      saveSession();
     }
     await rpc("create_business",{ p_name:shop, p_owner_name:owner });
   },
@@ -351,16 +420,33 @@ var api = {
       s = await sb("/auth/v1/token?grant_type=password",{method:"POST",auth:false,body:{email:email,password:pass}});
     }catch(e){
       // "Invalid login credentials" is Supabase's wording, not a shopkeeper's.
-      if(/invalid login credentials/i.test(String((e && e.message) || "")))
+      if(/invalid login credentials/i.test(String((e && e.message) || ""))){
+        // Record the attempt against the shop that owns this email, so the Access
+        // Log shows something real. Best effort — never block sign-in on it.
+        try{ await rpc("log_failed_signin",{p_email:email}, true); }catch(_){}
         throw new Error("Wrong email or password. Check both and try again.");
+      }
       throw e;
     }
-    auth = { token:s.access_token, uid:s.user.id, email:email };
+    auth = { token:s.access_token, refresh:s.refresh_token, uid:s.user.id, email:email };
+    saveSession();
+    try{ await rpc("log_signin",{}); }catch(_){}
+  },
+
+  async requestPasswordReset(email){
+    if(!LIVE) throw new Error("Password reset needs the live app.");
+    await sb("/auth/v1/recover",{method:"POST",auth:false,
+      body:{email:email, redirect_to: location.origin + location.pathname}});
+  },
+
+  async setNewPassword(pass){
+    await sb("/auth/v1/user",{method:"PUT",body:{password:pass}});
   },
 
   signOut(){
     if(!LIVE){ db.session=null; saveLocal(); }
-    auth = {token:null,uid:null,email:null};
+    auth = {token:null,refresh:null,uid:null,email:null};
+    saveSession();
   },
 
   signedIn(){ return LIVE ? !!auth.token : !!(db.session && db.accounts[db.session.accountId]); },
@@ -396,8 +482,10 @@ var api = {
       a.cards.unshift({id:uid(),name:name,location:location,code:code8(),created_at:new Date().toISOString()});
       saveLocal(); return;
     }
-    await sb("/rest/v1/scan_cards",{method:"POST",prefer:"return=minimal",
-      body:{business_id:S.businessId,name:name,location:location,code:code8()}});
+    // The code is generated in the database with a uniqueness retry. The browser's
+    // Math.random() could produce short or colliding codes, and the code is the only
+    // thing standing between a stranger and this shop's submit endpoint.
+    await rpc("create_scan_card",{ p_name:name, p_location:location });
   },
 
   async addByHand(name, phone, card){
@@ -442,7 +530,8 @@ var api = {
       return { returning:back, first_name:name.split(" ")[0], no:db.slip };
     }
     var r = await rpc("submit_lead",{p_code:card.code,p_name:name,p_phone:p}, true);
-    return { returning:!!r.returning, first_name:r.first_name, no:Math.floor(Date.now()/1000)%10000 };
+    return { returning:!!r.returning, deduped:!!r.deduped, first_name:r.first_name,
+             no:Math.floor(Date.now()/1000)%10000 };
   },
 
   // Known-number greeting while typing. Live mode stays silent on purpose: we never
@@ -458,6 +547,17 @@ var api = {
    state + router
    =========================================================================== */
 var S = null, view = "signin", q = "", openCust = null, scan = null, slip = null, busy = false;
+/** True while the user arrived from a password-reset email and owes us a new password. */
+var recovery = false;
+
+/** Supabase sends the recovery link back as #access_token=...&type=recovery */
+function recoveryFromUrl(){
+  var h = String(location.hash||"");
+  if(h.indexOf("type=recovery") === -1) return null;
+  var p = new URLSearchParams(h.replace(/^#/,""));
+  var t = p.get("access_token");
+  return t ? { token:t, refresh:p.get("refresh_token") } : null;
+}
 
 function scanCodeFromUrl(){
   var m = String(location.hash||"").match(/^#\/s\/([A-Za-z0-9]+)/);
@@ -469,6 +569,7 @@ function go(v){ view=v; render(); window.scrollTo(0,0); }
 var app = document.getElementById("app");
 
 function render(){
+  if(recovery){ app.innerHTML = vRecovery(); return wire(); }
   if(view==="scan" || view==="thanks"){ app.innerHTML = vCustomer(); return wire(); }
   // A signed-in user with no shop yet still belongs on the signup form. Without the
   // second test they fall through to the !S branch below and sit on "Loading your
@@ -532,7 +633,19 @@ function vSignin(){
     + '<div class="field"><label for="p">Password</label><input id="p" type="password" autocomplete="current-password" placeholder="••••••••"></div>'
     + '<p class="hint" id="hint"></p>'
     + '<button class="btn btn--big" data-signin>Sign in</button>'
-    + '<p class="note" style="text-align:center;margin-top:18px">New here? <a href="#" data-go="signup">Create your shop</a></p>'
+    + '<p class="note" style="text-align:center;margin-top:14px"><a href="#" data-forgot>Forgot your password?</a></p>'
+    + '<p class="note" style="text-align:center;margin-top:12px">New here? <a href="#" data-go="signup">Create your shop</a></p>'
+    + '</div></section></div>';
+}
+function vRecovery(){
+  return '<div class="auth">'+pitch()
+    + '<section class="auth__form"><div class="auth__inner">'
+    + '<p class="eyebrow">Almost done</p><h1>Set a new password</h1>'
+    + '<p class="note" style="margin:8px 0 24px">Then you are back in.</p>'
+    + '<div class="field"><label for="np1">New password</label><input id="np1" type="password" autocomplete="new-password" placeholder="At least 6 characters"></div>'
+    + '<div class="field"><label for="np2">Type it again</label><input id="np2" type="password" autocomplete="new-password"></div>'
+    + '<p class="hint" id="hint"></p>'
+    + '<button class="btn btn--big" data-setpass>Save new password</button>'
     + '</div></section></div>';
 }
 function vSignup(){
@@ -684,8 +797,8 @@ function vProfile(c){
 function vAccess(){
   return '<div class="stack">'
     + '<div><p class="eyebrow">Who opened this shop</p><h1>Access log</h1>'
-    + '<p class="note" style="margin-top:9px;max-width:62ch">Every sign-in and every wrong password is written down here. '
-    + 'Five wrong attempts in a row lock the account.</p></div>'
+    + '<p class="note" style="margin-top:9px;max-width:62ch">Every successful sign-in, and every wrong password '
+    + 'tried against this shop\'s email, is written down here.</p></div>'
     + '<section class="card"><table><thead><tr><th>When</th><th>Who</th><th style="text-align:right">Result</th></tr></thead><tbody>'
     + (S.logins.length ? S.logins.map(function(l){
         return '<tr><td class="num" style="font-size:13px">'+fmtDate(l.at)+' · '+fmtTime(l.at)+'</td>'
@@ -716,8 +829,14 @@ function vCustomer(){
       + '</div></div>';
   }
   if(!scan || !scan.found){
+    // Distinguish "the card is dead" from "your phone has no signal" — telling someone
+    // to ask the shop for a new card when the real problem is one bar of reception
+    // sends them away for no reason.
+    var dead = scan && scan.offline
+      ? { h:"No internet on this phone", p:"Move somewhere with signal and scan the card again. Nothing was lost." }
+      : { h:"This card is not active", p:"Ask the shop for a fresh one." };
     return '<div class="cust"><div class="cust__in"><div class="panel" style="text-align:center">'
-      + '<h2>This card is not active</h2><p class="note" style="margin-top:9px">Ask the shop for a fresh one.</p>'
+      + '<h2>'+esc(dead.h)+'</h2><p class="note" style="margin-top:9px">'+esc(dead.p)+'</p>'
       + '<div style="margin-top:18px"><button class="btn btn--ghost btn--sm" data-leave>Go to the shop view</button></div>'
       + '</div></div></div>';
   }
@@ -727,13 +846,22 @@ function vCustomer(){
     + '<div class="cust__item"><p class="eyebrow" style="margin-bottom:3px">Asking about</p>'
     + '<div style="font-weight:750">'+esc(scan.card_name)+'</div>'
     + '<div class="note">'+esc(scan.location)+'</div></div>'
-    + '<div class="field"><label for="f-name">Your name</label><input id="f-name" autocomplete="name" placeholder="Priya Sharma"></div>'
+    + '<div class="field"><label for="f-name">Your name</label><input id="f-name" autocomplete="name" maxlength="80" placeholder="Priya Sharma"></div>'
     + '<div class="field"><label for="f-phone">Mobile number</label>'
     + '<input id="f-phone" class="phone" inputmode="numeric" autocomplete="tel" maxlength="15" placeholder="98765 43210"></div>'
+    + '<div class="hp" aria-hidden="true">'
+    + '<label for="f-company">Company</label>'
+    + '<input id="f-company" name="company" tabindex="-1" autocomplete="off"></div>'
     + '<p class="hint" id="hint"></p>'
     + '<button class="btn btn--big" data-submit>Send my details</button>'
-    + '<div class="privacy">'+ico("lock",16)+'<span>No account, no password, no app. '
-    + 'Your name and number go to '+esc(scan.shop_name)+' only.</span></div>'
+    + '<div class="privacy">'+ico("lock",16)+'<div><span>No account, no password, no app. '
+    + 'Your name and number go to '+esc(scan.shop_name)+' only.</span>'
+    + '<details><summary>What happens to my number?</summary>'
+    + '<p><b>'+esc(scan.shop_name)+'</b> keeps your name and mobile number so they can '
+    + 'contact you about '+esc(String(scan.card_name).toLowerCase())+'. It is not sold, '
+    + 'not shared with anyone else, and not used for anything else.</p>'
+    + '<p>Ask the shop any time to show you what they hold, correct it, or delete it.</p>'
+    + '</details></div></div>'
     + '</div></div></div>';
 }
 
@@ -783,14 +911,63 @@ async function doAddCard(){
     await api.addCard(n,l); await refresh(); render(); toast("Scan card ready");
   });
 }
+/** When the customer form was drawn. Used for the time-on-form check. */
+var formShownAt = 0;
+var MIN_FORM_MS = 2000;
+
 async function doSubmit(){
   await guard("[data-submit]", async function(){
-    var n=val("f-name"), p=val("f-phone");
+    var n=val("f-name"), p=val("f-phone"), hp=val("f-company");
+    var tooFast = formShownAt && (Date.now() - formShownAt) < MIN_FORM_MS;
+
+    // Two bot signals: a field no human can see, and a speed no human can reach.
+    // Both fail silently — a bot told it failed simply retries. Rate limiting is the
+    // real defence; this only removes the cheap noise.
+    if(hp || tooFast){
+      slip = { first_name:(n||"there").split(" ")[0], returning:false, no:0, phone:normPhone(p) };
+      go("thanks"); return;
+    }
+
     if(!n) throw new Error("Your name, please.");
-    if(normPhone(p).length!==10) throw new Error("That number needs 10 digits.");
-    var r = await api.submitLead(scan,n,p);
-    slip = { first_name:r.first_name||n.split(" ")[0], returning:r.returning, no:r.no, phone:normPhone(p) };
-    go("thanks");
+    var p10 = normPhone(p);
+    if(!/^[6-9][0-9]{9}$/.test(p10))
+      throw new Error("That needs to be a 10 digit Indian mobile number.");
+
+    try{
+      var r = await api.submitLead(scan,n,p);
+      slip = { first_name:r.first_name||n.split(" ")[0], returning:r.returning, no:r.no, phone:p10 };
+      go("thanks");
+    }catch(err){
+      var m = String((err && err.message) || "");
+      if(err && err.offline)
+        throw new Error("No internet just now. Your details are still on screen — tap Send again when you have signal.");
+      if(/no longer active/i.test(m))
+        throw new Error("This card has been switched off. Ask the shop for a fresh one.");
+      if(/too many|busy right now/i.test(m)) throw err;   // already phrased for a customer
+      throw new Error("Could not send just now. Please tap Send again.");
+    }
+  });
+}
+
+async function doForgotPassword(){
+  var e = val("e");
+  if(!e){ hint("Type your email above first, then tap this.","bad"); return; }
+  try{
+    await api.requestPasswordReset(e);
+    hint("Check your email for a link to set a new password.","ok");
+  }catch(err){ hint(err.message||"Could not send the reset email.","bad"); }
+}
+
+async function doSetPassword(){
+  await guard("[data-setpass]", async function(){
+    var p=val("np1"), q=val("np2");
+    if(p.length<6) throw new Error("Password needs at least 6 characters.");
+    if(p!==q) throw new Error("The two passwords do not match.");
+    await api.setNewPassword(p);
+    recovery = false;
+    await refresh();
+    go(S && S.needsShop ? "signup" : "counter");
+    toast("Password changed");
   });
 }
 function manualForm(){
@@ -859,6 +1036,8 @@ function wire(){
   on("[data-signup]", doSignup);
   on("[data-addcard]", doAddCard);
   on("[data-submit]", doSubmit);
+  on("[data-setpass]", doSetPassword);
+  on("[data-forgot]", function(e){ e.preventDefault(); doForgotPassword(); });
   on("[data-manual]", manualForm);
   on("[data-print]", function(){ window.print(); });
   on("[data-back]", function(){ openCust=null; render(); });
@@ -895,6 +1074,7 @@ function wire(){
 
   var ph=document.getElementById("f-phone");
   if(ph){
+    formShownAt = Date.now();
     ph.addEventListener("input", function(){
       if(normPhone(ph.value).length < 10) return hint("");
       var known = api.peek(ph.value);
@@ -920,20 +1100,44 @@ function wire(){
 window.addEventListener("hashchange", function(){ if(scanCodeFromUrl()) boot(); });
 
 async function boot(){
+  // A password-reset link arrives as a hash carrying a live token. Take it, strip it
+  // from the address bar so it cannot be shoulder-surfed or shared, then ask for the
+  // new password.
+  var rec = recoveryFromUrl();
+  if(rec && api.live){
+    auth = { token:rec.token, refresh:rec.refresh, uid:null, email:null };
+    saveSession(); recovery = true;
+    try{ history.replaceState(null, "", location.pathname); }catch(e){}
+    render(); return;
+  }
+
   var code = scanCodeFromUrl();
   if(code){
     if(!api.live) await loadLocal();
-    scan = await api.getCard(code);
+    try{ scan = await api.getCard(code); }
+    catch(e){ scan = { found:false, offline:!!e.offline }; }
     if(scan) scan.code = code;
     view="scan"; render(); return;
   }
+
   if(!api.live){
     await loadLocal();
     if(api.signedIn()){ await refresh(); view="counter"; } else view="signin";
     render(); return;
   }
+
+  // Restore a stored session. The access token has probably expired, so trade the
+  // refresh token for a fresh one before deciding whether we are signed in.
+  loadSession();
+  if(auth.token && !(await refreshToken())){
+    auth = {token:null,refresh:null,uid:null,email:null}; saveSession();
+  }
+
   view = api.signedIn() ? "counter" : "signin";
-  if(api.signedIn()) await refresh();
+  if(api.signedIn()){
+    try{ await refresh(); }
+    catch(e){ auth={token:null,refresh:null,uid:null,email:null}; saveSession(); view="signin"; }
+  }
   render();
 }
 boot();
