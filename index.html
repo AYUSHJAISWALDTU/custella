@@ -302,9 +302,26 @@ var api = {
         logins:[{at:new Date().toISOString(),who:owner+" (owner)",ok:true}] };
       db.session={accountId:email}; saveLocal(); return;
     }
-    var s = await sb("/auth/v1/signup",{method:"POST",auth:false,body:{email:email,password:pass}});
-    if(!s.access_token) throw new Error("Check your inbox to confirm the email, then sign in.");
-    auth = { token:s.access_token, uid:s.user.id, email:email };
+    // Creating the account and creating the shop are two separate steps, and the
+    // account step can already be done — either because email confirmation made
+    // signup return no token, or because we are here from the "signed in but no
+    // shop" recovery path. Only do the parts that are still missing.
+    if(!auth.token){
+      var tok = null;
+      try{
+        var s = await sb("/auth/v1/signup",{method:"POST",auth:false,body:{email:email,password:pass}});
+        if(s.access_token) tok = { token:s.access_token, uid:s.user.id };
+      }catch(e){ /* already registered — fall through and just sign in */ }
+      if(!tok){
+        try{
+          var t = await sb("/auth/v1/token?grant_type=password",{method:"POST",auth:false,body:{email:email,password:pass}});
+          tok = { token:t.access_token, uid:t.user.id };
+        }catch(e2){
+          throw new Error("Confirm the email in your inbox first, then come back and create your shop.");
+        }
+      }
+      auth = { token:tok.token, uid:tok.uid, email:email };
+    }
     await rpc("create_business",{ p_name:shop, p_owner_name:owner });
   },
 
@@ -440,7 +457,10 @@ var app = document.getElementById("app");
 
 function render(){
   if(view==="scan" || view==="thanks"){ app.innerHTML = vCustomer(); return wire(); }
-  if(!api.signedIn()){ app.innerHTML = (view==="signup") ? vSignup() : vSignin(); return wire(); }
+  // A signed-in user with no shop yet still belongs on the signup form. Without the
+  // second test they fall through to the !S branch below and sit on "Loading your
+  // shop…" forever, with no way out.
+  if(!api.signedIn() || (S && S.needsShop)){ app.innerHTML = (view==="signup") ? vSignup() : vSignin(); return wire(); }
   if(!S){ app.innerHTML = '<div class="load">Loading your shop…</div>'; return; }
   var body = ({counter:vCounter, cards:vCards, customers:vCustomers, access:vAccess}[view] || vCounter)();
   app.innerHTML = '<div class="shell">'+sidebar()+'<main class="main">'+mobileTop()+body+'</main></div>'+tabs();
@@ -731,7 +751,8 @@ async function doSignin(){
     var e=val("e"), p=val("p");
     if(!e||!p) throw new Error("Email and password, please.");
     await api.signIn(e,p); await refresh();
-    if(S && S.needsShop){ S=null; go("signup"); return; }
+    // Keep S — render() needs to see needsShop to know to show the signup form.
+    if(S && S.needsShop){ go("signup"); return; }
     go("counter");
   });
 }
