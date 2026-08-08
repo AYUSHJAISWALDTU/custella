@@ -70,7 +70,9 @@ test('rubbish is rejected by the validator, not silently accepted', () => {
   // normPhone() only normalises; submit_lead's regex is what refuses these.
   // Before Phase 2 the UAE number below was stored as a plausible Indian one.
   const rejected = [
-    ['+971 50 123 4567', 'UAE number truncated to 1501234567'],
+    ['+971 50 123 4567', 'UAE number, no longer truncated into a valid-looking Indian one'],
+    ['1800 123 4567', 'toll-free, used to become 8001234567 and pass as a mobile'],
+    ['011-2345-6789', 'landline'],
     ['5551234567', 'starts with 5 — not an Indian mobile'],
     ['12345', 'too short'],
     ['0000000000', 'all zeroes'],

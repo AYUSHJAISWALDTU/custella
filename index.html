@@ -244,9 +244,16 @@ function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){
   return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
 function normPhone(raw){
   var d = String(raw||"").replace(/\D/g,"");
+  // Peel only what can legally sit in front of an Indian mobile: trunk zeros,
+  // the country code, then any zero it was hiding.
+  while(d.length>10 && d[0]==="0") d=d.slice(1);
   if(d.length>10 && d.slice(0,2)==="91") d=d.slice(2);
-  if(d.length>10 && d[0]==="0") d=d.slice(1);
-  return d.slice(-10);
+  while(d.length>10 && d[0]==="0") d=d.slice(1);
+  // Deliberately NOT slice(-10). Keeping the last ten digits turned a toll-free
+  // 1800 number into "8001234567" and a UAE number into "1501234567" — both pass
+  // as valid Indian mobiles and were being stored as real people. Anything not
+  // exactly ten digits now stays long so the validator can reject it.
+  return d;
 }
 function pretty(p){ return p && p.length===10 ? p.slice(0,5)+" "+p.slice(5) : (p||""); }
 function fmtDate(x){ return new Date(x).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}); }
