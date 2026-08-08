@@ -1,0 +1,49 @@
+name: keep-alive
+
+# WHY THIS EXISTS
+# Supabase pauses Free Plan projects that see low database activity over a 7-day
+# window. Custella's whole surface is a printed QR card sitting on a shop counter —
+# if the project pauses, every one of those cards leads to a dead page for a customer
+# who has no idea why, and the shopkeeper may not find out for days.
+#
+# Supabase's own guidance is that "a few user requests to the database each day" is
+# enough to keep a project active, and it explicitly lists making API calls to your
+# project as a supported way to prevent pausing. This does exactly that: two cheap
+# reads a day against a public, anon-callable function.
+#
+# It is a $0 substitute for the $25/month Pro plan on the single axis that matters
+# here — staying awake. It does NOT buy backups, support, or the guarantee. See
+# docs/staying-free.md.
+
+on:
+  schedule:
+    # Twice a day, offset from the hour so we are not in the thundering herd.
+    - cron: '17 4 * * *'
+    - cron: '17 16 * * *'
+  workflow_dispatch:        # so you can prove it works without waiting 12 hours
+
+jobs:
+  ping:
+    name: touch the database
+    runs-on: ubuntu-latest
+    steps:
+      - name: query Supabase
+        env:
+          # The anon key is public by design — it is already in index.html and can
+          # only reach two guarded functions. Nothing secret is needed here.
+          URL: https://uussbcwzeurynjzjufjd.supabase.co
+          KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1c3NiY3d6ZXVyeW5qemp1ZmpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYxMjg0NzksImV4cCI6MjEwMTcwNDQ3OX0.Pio-gvI383SxRGQefzw6zGC8Tx2efqBApSksA7AjTMo
+        run: |
+          set -euo pipefail
+          # get_scan_card runs a real SELECT across scan_cards and businesses.
+          # A code that matches nothing returns {"found": false} and writes nothing.
+          code=$(curl -sS -o /tmp/out.json -w '%{http_code}' \
+            -X POST "$URL/rest/v1/rpc/get_scan_card" \
+            -H "apikey: $KEY" -H "Content-Type: application/json" \
+            -d '{"p_code":"KEEPALIVE"}')
+          echo "HTTP $code — $(cat /tmp/out.json)"
+          # A pause shows up as a 5xx or a connection failure, so fail loudly:
+          # a silently broken keep-alive is worse than none at all.
+          test "$code" = "200"
+          grep -q '"found"' /tmp/out.json
+          echo "Project is awake."
