@@ -730,7 +730,7 @@ function qcard(c){
     + '<div class="qc__acts">'
     + '<button class="btn btn--sm btn--ghost" data-open="'+esc(c.code)+'">Open form</button>'
     + '<button class="btn btn--sm" data-pdf="'+esc(c.code)+'">'+ico("down",15)+'PDF</button>'
-    + '<button class="btn btn--sm btn--ghost" data-print>'+ico("print",15)+'Print</button></div></article>';
+    + '<button class="btn btn--sm btn--ghost" data-print="'+esc(c.code)+'">'+ico("print",15)+'Print</button></div></article>';
 }
 function drawQR(){
   var n = document.querySelectorAll("[data-qr]");
@@ -1208,6 +1208,39 @@ function buildCardPdf(card, shopName){
   return concatBytes(parts);
 }
 
+/**
+ * Print one card.
+ *
+ * window.print() was the wrong tool three ways: it printed the whole page rather
+ * than the card you clicked, it needs a desktop print dialog, and inside the Android
+ * app it did nothing at all because an Android WebView has no print support.
+ *
+ * Building the same PDF and opening it hands the job to something that can always
+ * print — the browser's PDF viewer on a laptop, or Android's share sheet (where
+ * "Print" is one of the targets) on a phone.
+ */
+function printCard(code){
+  var card = (S.cards || []).filter(function(c){ return c.code === code; })[0];
+  if(!card){ toast("Card not found"); return; }
+  var url;
+  try{
+    url = URL.createObjectURL(new Blob([buildCardPdf(card, S.shop.name)], {type:"application/pdf"}));
+  }catch(e){ toast("Could not make the card"); return; }
+
+  var w = null;
+  try{ w = window.open(url, "_blank"); }catch(e){}
+  if(w){
+    // Let the viewer lay the page out before offering the print dialog.
+    setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} }, 800);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 60000);
+  }else{
+    // Popup blocked, or the Android shell (which runs with multiple windows off).
+    // Hand the file to the system instead — Print is one of the share targets.
+    URL.revokeObjectURL(url);
+    downloadCardPdf(code);
+  }
+}
+
 function downloadCardPdf(code){
   var card = (S.cards || []).filter(function(c){ return c.code === code; })[0];
   if(!card){ toast("Card not found"); return; }
@@ -1276,7 +1309,7 @@ function wire(){
   // querySelectorAll, not querySelector. `on()` binds the FIRST match only, so with
   // more than one card every Print button except the first one did nothing at all.
   document.querySelectorAll("[data-print]").forEach(function(n){
-    n.addEventListener("click", function(){ window.print(); });
+    n.addEventListener("click", function(){ printCard(n.getAttribute("data-print")); });
   });
   document.querySelectorAll("[data-pdf]").forEach(function(n){
     n.addEventListener("click", function(){ downloadCardPdf(n.getAttribute("data-pdf")); });
