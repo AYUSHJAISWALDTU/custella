@@ -9,17 +9,19 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.custella.app"
+      "bundleIdentifier": "in.custella.app",
+      "supportsTablet": false
     },
     "android": {
-      "package": "com.custella.app",
+      "package": "in.custella.app",
+      "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#FFFFFF",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#12142B"
       },
+      "permissions": [
+        "INTERNET"
+      ],
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -27,11 +29,15 @@
     },
     "plugins": [
       "expo-router",
-      "expo-localization",
-      "expo-font"
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#12142B"
     }
   }
 }
