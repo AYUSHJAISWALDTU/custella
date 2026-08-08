@@ -19,6 +19,11 @@ jobs:
       - name: normalisation tests
         run: node --test test/identity.test.js
 
+      # The card PDF gets printed and taped to a counter. A malformed file or a QR
+      # with no quiet zone fails where nobody is watching.
+      - name: printable card PDF
+        run: node --test test/card-pdf.test.js
+
       # A syntax error in the single-file app would ship a blank page to every
       # shop counter, and there is no build step to catch it.
       - name: app parses
